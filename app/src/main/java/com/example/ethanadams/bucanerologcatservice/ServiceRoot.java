@@ -93,6 +93,8 @@ public class ServiceRoot extends Service {
 
                         //set the current file reference to the new file
                         currentLTFFile = newLTFFile;
+
+                        attemptUploadOfOldestLogFile();
                     }
                     else {
                         Log.e(TAG, "Could not redirect logcat to the new file");
@@ -104,21 +106,34 @@ public class ServiceRoot extends Service {
 
                 attemptUploadOfOldestLogFile();
 
-                h.postDelayed(this, 1000);
+                h.postDelayed(this, 1000 * 60 * 60);
             }
         };
 
-        h.postDelayed(repeater, 1000 * 60 * 60);
+        h.postDelayed(repeater, 1000);
         return START_NOT_STICKY;
     }
 
+    /**
+     * finds the oldest log file and attempts to upload it to Asahi
+     * if upload succeeds, will delete the file
+     */
     private void attemptUploadOfOldestLogFile() {
         //get the current log files
         File[] files = logDirectory.listFiles();
 
         //make sure we only upload/remove a logfile if it isn't the only one (and likely the current)
         if(files.length > 1){
+            File oldest = getOldestLogFile(files);
 
+            boolean uploadSucceeded = postOldLogFileToAsahi(oldest, extractDateFromFileName(oldest));
+
+            if(uploadSucceeded){
+                //delete file
+            }
+            else {
+                Log.e(TAG, "upload to asahi failed, will not remove file");
+            }
         }
     }
 
@@ -149,6 +164,11 @@ public class ServiceRoot extends Service {
         }
     }
 
+    /**
+     * creates a new ltf file in the sdcard/ABLogs/logs directory.
+     * File name will take the form of logcat-[uuid]-[mmddyy]-[hh:mm:ss].txt based on the current time
+     * @return created file
+     */
     public static File generateNewLTFFileName(){
 
         Calendar now = Calendar.getInstance();
@@ -163,6 +183,11 @@ public class ServiceRoot extends Service {
 
     }
 
+    /**
+     * points logcat to the supplied file
+     * @param newLogFile file to Log to
+     * @return true if logcat system command succeeds, false otherwise
+     */
     public static boolean startLoggingToNewFile(File newLogFile){
         boolean redirectSuccessful = false;
 
@@ -180,21 +205,33 @@ public class ServiceRoot extends Service {
         return redirectSuccessful;
     }
 
+    /**
+     * given an array of logfiles, returns the oldest in the array (based on file name date info)
+     * @param logFiles array of logfiles
+     * @return the oldest file in the array
+     */
     public static File getOldestLogFile(File[] logFiles){
         File oldestFile = logFiles[0];
         Date oldestFilesDate = extractDateFromFileName(oldestFile);
 
         for(int i = 1; i < logFiles.length; i++){
             Date logFilesDate = extractDateFromFileName(logFiles[i]);
-            if(logFilesDate.compareTo(oldestFilesDate) < 0){
-                oldestFile = logFiles[i];
-                oldestFilesDate = logFilesDate;
+            if(logFilesDate != null) {
+                if (logFilesDate.compareTo(oldestFilesDate) < 0) {
+                    oldestFile = logFiles[i];
+                    oldestFilesDate = logFilesDate;
+                }
             }
         }
 
         return oldestFile;
     }
 
+    /**
+     * Extracts the date information from the supplied file's name and creates a date object from it
+     * @param logFile the log file with date information in the form "logcat-[uuid]-[mmddyy]-[hh:mm:ss].txt"
+     * @return date object corresponding to file's name, null if not formatted correctly
+     */
     public static Date extractDateFromFileName(File logFile){
         String fileName = logFile.getName();
 
@@ -245,7 +282,7 @@ public class ServiceRoot extends Service {
             return null;
         }
         try {
-            hours = Integer.parseInt(hoursString)
+            hours = Integer.parseInt(hoursString);
             minutes = Integer.parseInt(minutesString);
             seconds = Integer.parseInt(secondsString);
         } catch (NumberFormatException e){
@@ -260,9 +297,18 @@ public class ServiceRoot extends Service {
         return c.getTime();
     }
 
-    public static boolean postOldLogFileToAsahi(){
+    /**
+     * posts the contents of the supplied file to /media/upload with the associated body parameters
+     * NOTE: does not delete the file
+     * @param oldLogFile oldest log file to upload contents of
+     * @param dateLoggedTo time that the file was created (and logged to for the following hour), necessary for the post body
+     * @return true if upload works, false otherwise
+     */
+    public static boolean postOldLogFileToAsahi(File oldLogFile, Date dateLoggedTo){
         //todo add okhttp support so that I can upload file
 
         return false;
     }
+
+
 }
